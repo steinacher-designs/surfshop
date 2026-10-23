@@ -196,6 +196,7 @@ async function loadAll() {
       if (lmg !== 'lm_int') { mat.envMap = PROBES.probe_ext; mat.envMapIntensity = 0.12; }
     }
     o.material = mat;
+    if (name === 'roofmetal') o.visible = false;   // no roof overhang
     if (name === 'glass' || name === 'p_glass') o.renderOrder = 2;
     if (COLLIDE.has(name)) colliders.push(o);
   });

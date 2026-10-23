@@ -1,0 +1,26 @@
+body.tour #scene{cursor:grab}
+body.tour #scene.is-dragging{cursor:grabbing}
+body.tour #scene.is-hot{cursor:pointer}
+.intro__alt{margin:1rem 0 0;padding-top:1rem;border-top:1px solid var(--line);font-size:.8rem}
+.intro__alt a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line)}
+.intro__alt a:hover{border-color:var(--ink)}
+
+.map{position:fixed;left:max(16px,env(safe-area-inset-left));bottom:max(16px,env(safe-area-inset-bottom));z-index:5;
+  background:var(--glass);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-radius:16px;padding:8px;width:150px}
+.map__tabs{display:flex;gap:4px;margin-bottom:6px}
+.map__tabs button{flex:1;border:0;border-radius:999px;padding:.25rem 0;font-size:.72rem;font-weight:600;background:transparent;color:var(--ink)}
+.map__tabs button.is-active{background:var(--ink);color:var(--sand)}
+#mapSvg{display:block;width:100%;height:auto;overflow:hidden;border-radius:10px}
+#mapSvg .wall{stroke:var(--ink);stroke-width:.07;fill:none;stroke-linecap:round}
+#mapSvg .glass{stroke:#6f97a6;stroke-width:.05;fill:none}
+#mapSvg .stair{stroke:var(--coral);stroke-width:.05;fill:none}
+#mapSvg .street{fill:rgba(36,65,77,.07)}
+#mapSvg .pt{fill:var(--paper);stroke:var(--ink);stroke-width:.08;cursor:pointer}
+#mapSvg .pt:hover{fill:var(--gold)}
+#mapSvg .pt.is-here{fill:var(--coral);stroke:#fff}
+#mapSvg .cone{fill:rgba(217,83,47,.28)}
+
+.tip{position:fixed;z-index:6;pointer-events:none;transform:translate(-50%,-140%);background:var(--ink);color:var(--sand);
+  font-size:.78rem;font-weight:600;padding:.35rem .7rem;border-radius:999px;white-space:nowrap}
+.fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .35s;z-index:3}
+@media (max-width:720px){.map{width:118px}}
