@@ -29,6 +29,7 @@ renderer.setPixelRatio(TEST ? 1 : Math.min(window.devicePixelRatio, isTouch ? 1.
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.AgXToneMapping;
+renderer.localClippingEnabled = true;
 renderer.toneMappingExposure = parseFloat(params.get('exp') || '1.0');
 renderer.xr.enabled = true;
 renderer.xr.setReferenceSpaceType('local-floor');
@@ -38,17 +39,17 @@ const scene = new THREE.Scene();
 {
   const c = document.createElement('canvas'); c.width = 16; c.height = 512;
   const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 512);
-  gr.addColorStop(0.0, '#6f9ac2'); gr.addColorStop(0.3, '#a9c5df'); gr.addColorStop(0.49, '#e4e6e6');
-  gr.addColorStop(0.5, '#c9c6c0'); gr.addColorStop(1.0, '#b9b5ae');
+  gr.addColorStop(0.0, '#2f5d8a'); gr.addColorStop(0.28, '#6d97bd'); gr.addColorStop(0.42, '#d9b48a'); gr.addColorStop(0.49, '#f2c48c');
+  gr.addColorStop(0.5, '#b8a48c'); gr.addColorStop(1.0, '#8f8274');
   g.fillStyle = gr; g.fillRect(0, 0, 16, 512);
   const t = new THREE.CanvasTexture(c); t.mapping = THREE.EquirectangularReflectionMapping; t.colorSpace = THREE.SRGBColorSpace;
   scene.background = t;
-  scene.fog = new THREE.Fog('#d9dcdf', 60, 170);
+  scene.fog = new THREE.Fog('#e8c39a', 80, 230);
 }
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 400);
 const rig = new THREE.Group();          // player feet
 scene.add(rig);
-scene.add(new THREE.HemisphereLight(0xfff2e2, 0x9a8a74, 0.35));   // soft fill so no corner goes black
+scene.add(new THREE.HemisphereLight(0xfff2e2, 0x9a8a74, 0.12));   // soft fill so no corner goes black
 rig.add(camera);
 
 /* ------------------------------------------------------------------ loading bookkeeping */
@@ -100,13 +101,13 @@ const BAKED = {
   ceiling: () => std({ color: linHex('#efebe4'), roughness: 0.9 }),
   plaster: () => std({ map: tex(T + 'white_plaster_02_col.jpg', 2, 2), roughness: 0.9 }),
   concrete: () => std({ map: tex(T + 'concrete_floor_02_col.jpg', 2.5, 2.5), roughness: 0.8 }),
-  facade: () => std({ map: tex(T + 'plastered_wall_04_col.jpg', 2, 2), color: linHex('#5a5e62'), roughness: 0.8 }),
+  facade: () => std({ color: linHex('#2b2e31'), roughness: 0.55, metalness: 0.3 }),
   orange: () => std({ color: linHex('#d4502c'), roughness: 0.45, metalness: 0.1 }),
   roofmetal: () => std({ color: linHex('#3a4045'), roughness: 0.4, metalness: 0.6 }),
-  nb_plaster_a: () => std({ map: tex(T + 'yellow_plaster_col.jpg', 2.5, 2.5), roughness: 0.9 }),
-  nb_plaster_b: () => std({ map: tex(T + 'beige_wall_001_col.jpg', 2.5, 2.5), roughness: 0.9 }),
-  nb_plaster_c: () => std({ map: tex(T + 'plastered_wall_04_col.jpg', 2.5, 2.5), color: linHex('#ece6da'), roughness: 0.9 }),
-  nb_stone: () => std({ map: tex(T + 'plastered_wall_04_col.jpg', 2, 2), color: linHex('#b7b0a4'), roughness: 0.85 }),
+  nb_plaster_a: () => std({ color: linHex('#dcc493'), roughness: 0.85 }),
+  nb_plaster_b: () => std({ color: linHex('#ddd3c2'), roughness: 0.85 }),
+  nb_plaster_c: () => std({ color: linHex('#c9cdcc'), roughness: 0.85 }),
+  nb_stone: () => std({ color: linHex('#7d776e'), roughness: 0.8 }),
   walk: () => std({ map: tex(T + 'granite_tile_03_col.jpg', 2, 2), roughness: 0.8 }),
   curb: () => std({ color: linHex('#4a4a4a'), roughness: 0.6, metalness: 0.4 }),
   road: () => std({ map: tex(T + 'granite_tile_col.jpg', 2, 2), roughness: 0.85 }),
@@ -116,7 +117,7 @@ const DYN = {
   rubber: () => std({ color: linHex('#141516'), roughness: 0.85 }),
   glass: () => new THREE.MeshPhysicalMaterial({ color: '#eef4f3', roughness: 0.02, transparent: true, opacity: 0.1, envMapIntensity: 1.4, depthWrite: false, side: THREE.DoubleSide }),
   nb_glass: () => std({ color: linHex('#1c2226'), roughness: 0.05, metalness: 0.2, envMapIntensity: 1.2 }),
-  nb_frame: () => std({ color: linHex('#e6e2da'), roughness: 0.5 }),
+  nb_frame: () => std({ color: linHex('#f4f1ea'), roughness: 0.45 }),
   nb_shopglass: () => std({ color: linHex('#202629'), roughness: 0.03, metalness: 0.1, envMapIntensity: 1.3 }),
   nb_shopframe: () => std({ color: linHex('#2a2c2e'), roughness: 0.4, metalness: 0.6 }),
   nb_roof: () => std({ map: tex(T + 'grey_roof_tiles_col.jpg', 3, 3), roughness: 0.8 }),
@@ -198,6 +199,7 @@ async function loadAll() {
     }
     o.material = mat;
     if (name === 'roofmetal') o.visible = false;   // no roof overhang
+    if (name === 'nb_roof' || name === 'facade') { mat.clippingPlanes = [new THREE.Plane(new THREE.Vector3(0, 0, -1), 6.94)]; }
     if (name === 'glass' || name === 'p_glass') o.renderOrder = 2;
     if (COLLIDE.has(name)) colliders.push(o);
   });
@@ -360,9 +362,9 @@ let orbitT = 0;
 function orbitCamera(dt) {
   orbitT += dt * 0.06;
   // slow dolly along the shopping street, looking at the shop front
-  rig.position.set(Math.sin(orbitT) * 9 - 2, 0, 15.5);
-  camera.position.set(0, 2.2, 0);
-  const v = lookAtYawPitch(new THREE.Vector3(rig.position.x, 2.2, rig.position.z), new THREE.Vector3(0.4, 4.2, 4));
+  rig.position.set(Math.sin(orbitT) * 6 - 1, 0, 13.5);
+  camera.position.set(0, 1.5, 0);
+  const v = lookAtYawPitch(new THREE.Vector3(rig.position.x, 1.5, rig.position.z), new THREE.Vector3(0.3, 4.6, 5));
   yaw = v.yaw; pitch = v.pitch; applyView();
 }
 
