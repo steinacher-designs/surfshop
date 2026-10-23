@@ -3,15 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Rip Curl Store – 360° Rundgang | Strasser &amp; Steinacher</title>
-<meta name="description" content="360°-Rundgang durch den Surfshop von Strasser &amp; Steinacher – im Browser, am Handy oder mit VR-Brille.">
-<meta name="theme-color" content="#1b1a18">
+<title>Rip Curl Store – Digitaler Rundgang | Strasser &amp; Steinacher</title>
+<meta name="description" content="Digitaler 3D-Rundgang durch den Surfshop von Strasser &amp; Steinacher – im Browser oder mit VR-Brille.">
+<meta name="theme-color" content="#ece2cc">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23e2552d'/%3E%3Cpath d='M10 40c8-14 18-14 26-4s14 8 18-2' stroke='%23f3eee6' stroke-width='5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
-<link rel="stylesheet" href="tour.css">
 <script type="importmap">
 { "imports": {
   "three": "./vendor/three/three.module.min.js",
@@ -19,55 +18,76 @@
 } }
 </script>
 </head>
-<body class="tour">
+<body>
 <canvas id="scene"></canvas>
 
+<!-- Intro / Loader -->
 <section id="intro" class="intro">
   <div class="intro__card">
     <div class="brand">
-      <span class="brand__mark" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M8 40c8-14 18-14 26-4s14 8 22-2" /></svg></span>
+      <span class="brand__mark" aria-hidden="true">
+        <svg viewBox="0 0 64 64"><path d="M8 40c8-14 18-14 26-4s14 8 22-2" /></svg>
+      </span>
       <span class="brand__name">Strasser <i>&amp;</i> Steinacher</span>
     </div>
-    <p class="intro__kicker">Rip Curl Store · Mariahilfer Straße</p>
-    <h1>der surfshop.<br><em>360° rundgang.</em></h1>
-    <p class="intro__lead">Schau dich rundum um, klick auf die Punkte am Boden und geh durch den Laden, die Treppe hinauf bis in die Lounge. Am Handy kannst du das Gerät einfach bewegen, mit einer VR-Brille stehst du mitten im Laden.</p>
+    <p class="intro__kicker">Rip Curl Store · from surfers for surfers</p>
+    <h1>der surfshop.<br><em>digitaler rundgang.</em></h1>
+    <p class="intro__lead">Geh durch den Laden, die Treppe hinauf ins Obergeschoss und schau dir alles in Ruhe an – direkt im Browser oder mit deiner VR-Brille.</p>
+
     <div class="progress" id="progress" aria-live="polite">
       <div class="progress__bar"><span id="progressBar"></span></div>
-      <span class="progress__label" id="progressLabel">Bilder werden geladen …</span>
+      <span class="progress__label" id="progressLabel">Modell wird geladen … 0 %</span>
     </div>
+
     <div class="intro__actions" id="introActions" hidden>
       <button class="btn btn--primary" id="btnStart">Rundgang starten</button>
       <button class="btn btn--ghost" id="btnVR" hidden>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 8.5A2.5 2.5 0 0 1 5.5 6h13A2.5 2.5 0 0 1 21 8.5v6a2.5 2.5 0 0 1-2.5 2.5h-3.2l-1.6-2.4a2 2 0 0 0-3.4 0L8.7 17H5.5A2.5 2.5 0 0 1 3 14.5z"/></svg>
-        Mit VR-Brille
+        Mit VR-Brille starten
       </button>
     </div>
-    <p class="intro__alt"><a href="modell.html">Lieber frei durch das 3D-Modell gehen →</a></p>
+    <p class="intro__vrnote" id="vrNote" hidden></p>
+
+    <ul class="keys" aria-label="Steuerung">
+      <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> gehen</li>
+      <li><kbd>Maus</kbd> umschauen</li>
+      <li><kbd>Shift</kbd> schneller</li>
+      <li class="keys__touch">Am Handy: links gehen, rechts wischen</li>
+    </ul>
   </div>
 </section>
 
+<!-- HUD -->
 <header class="hud" id="hud" hidden>
   <div class="hud__brand">
     <span class="brand__mark brand__mark--sm" aria-hidden="true"><svg viewBox="0 0 64 64"><path d="M8 40c8-14 18-14 26-4s14 8 22-2" /></svg></span>
     <span>Strasser <i>&amp;</i> Steinacher</span>
     <span class="hud__floor" id="floorLabel">EG</span>
   </div>
-  <nav class="stations" id="stations" aria-label="Standorte"></nav>
+  <nav class="stations" id="stations" aria-label="Stationen"></nav>
   <div class="hud__tools">
-    <button class="icon-btn" id="btnGyro" title="Bewegungssensor" hidden><svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M3 9c-1 2-1 4 0 6M21 9c1 2 1 4 0 6"/></svg></button>
-    <button class="icon-btn" id="btnVR2" title="VR-Brille" hidden>VR</button>
+    <button class="icon-btn" id="btnVR2" title="VR-Brille verbinden" hidden>VR</button>
     <button class="icon-btn" id="btnFull" title="Vollbild"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+    <button class="icon-btn" id="btnHelp" title="Steuerung"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17h.01"/></svg></button>
   </div>
 </header>
 
-<aside class="map" id="map" hidden>
-  <div class="map__tabs"><button data-floor="eg" class="is-active">EG</button><button data-floor="og">OG</button></div>
-  <svg id="mapSvg" aria-label="Grundriss"></svg>
-</aside>
+<div class="crosshair" id="crosshair" hidden></div>
+<div class="hint" id="hint" hidden>Klick ins Bild zum Umschauen · <kbd>Esc</kbd> Maus freigeben</div>
 
-<div class="tip" id="tip" hidden></div>
-<div class="hint" id="hint" hidden>Ziehen zum Umschauen · Punkte am Boden anklicken</div>
+<div class="joy" id="joy" hidden><div class="joy__knob" id="joyKnob"></div></div>
 
-<script type="module" src="tour.js"></script>
+<dialog class="help" id="help">
+  <h2>Steuerung</h2>
+  <dl>
+    <dt>Computer</dt><dd>Ins Bild klicken, dann mit der Maus umschauen. <kbd>W A S D</kbd> oder Pfeiltasten zum Gehen, <kbd>Shift</kbd> zum schneller Gehen, <kbd>Esc</kbd> gibt die Maus wieder frei.</dd>
+    <dt>Handy &amp; Tablet</dt><dd>Linker Joystick zum Gehen, rechts übers Bild wischen zum Umschauen.</dd>
+    <dt>VR-Brille</dt><dd>Seite im Browser der Brille öffnen (z.&nbsp;B. Meta Quest Browser) und „Mit VR-Brille starten“ tippen. Linker Stick: gehen · rechter Stick: drehen · Trigger gedrückt halten, zielen, loslassen: teleportieren.</dd>
+    <dt>Stationen</dt><dd>Oben auf eine Station tippen, um direkt hinzuspringen.</dd>
+  </dl>
+  <form method="dialog"><button class="btn btn--primary">Alles klar</button></form>
+</dialog>
+
+<script type="module" src="app.js"></script>
 </body>
 </html>

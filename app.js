@@ -48,6 +48,7 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 400);
 const rig = new THREE.Group();          // player feet
 scene.add(rig);
+scene.add(new THREE.HemisphereLight(0xfff2e2, 0x9a8a74, 0.35));   // soft fill so no corner goes black
 rig.add(camera);
 
 /* ------------------------------------------------------------------ loading bookkeeping */
@@ -86,7 +87,7 @@ let LMINFO = { scale: {} };
 /* ------------------------------------------------------------------ materials (albedo = same textures as the Blender bake) */
 const T = 'assets/tex/';
 const SPRUCE = [2.1, 1.04];
-const plyCol = () => tex(T + 'spruce_col.jpg', ...SPRUCE);
+const plyCol = () => tex(T + 'spruce_clean.jpg', ...SPRUCE);
 const plyNrm = tex(T + 'plywood_nrm.jpg', ...SPRUCE, false);
 const plyRgh = tex(T + 'plywood_rough.jpg', ...SPRUCE, false);
 const linHex = (h) => new THREE.Color(h);    // THREE.Color parses sRGB hex into linear working space
