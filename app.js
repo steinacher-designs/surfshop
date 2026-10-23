@@ -2,24 +2,19 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 /* ------------------------------------------------------------------ config */
 const EYE = 1.62;            // eye height in m
 const RADIUS = 0.28;         // body radius for collisions
 const STEP = 0.42;           // max step-up height (stairs, tribune steps)
 const WALK = 1.45, RUN = 2.9; // m/s
-const START = { pos: [0, 0, 6.2], look: [0, 1.5, 0] };
 const STATIONS = [
   { id: 'eingang',  label: 'Eingang',       pos: [0.0, 0, 6.2],  look: [0.0, 1.5, 0.0] },
   { id: 'laden',    label: 'Verkaufsraum',  pos: [0.4, 0, 2.6],  look: [-2.4, 1.1, -0.4] },
   { id: 'treppe',   label: 'Treppe',        pos: [2.55, 0, 2.7], look: [2.55, 2.6, -1.6] },
   { id: 'og',       label: 'Obergeschoss',  pos: [0.3, 3, -1.9], look: [0.6, 4.2, 6.0] },
   { id: 'lounge',   label: 'Lounge',        pos: [-0.9, 3, 3.6], look: [2.3, 3.5, 3.8] },
-  { id: 'aussen',   label: 'Außen',         pos: [-1.5, 0, 12.5], look: [0.5, 3.2, 0.0] },
+  { id: 'aussen',   label: 'Straße',        pos: [-5.0, 0, 11.5], look: [0.5, 3.5, 0.0] },
 ];
 
 const isTouch = matchMedia('(pointer: coarse)').matches;
@@ -33,195 +28,230 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPrefere
 renderer.setPixelRatio(TEST ? 1 : Math.min(window.devicePixelRatio, isTouch ? 1.5 : 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.NeutralToneMapping;
-renderer.toneMappingExposure = 1.05;
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.shadowMap.autoUpdate = false;
+renderer.toneMapping = THREE.AgXToneMapping;
+renderer.toneMappingExposure = parseFloat(params.get('exp') || '1.0');
 renderer.xr.enabled = true;
 renderer.xr.setReferenceSpaceType('local-floor');
-renderer.xr.setFoveation?.(0.5);
+renderer.xr.setFoveation?.(0.4);
 
 const scene = new THREE.Scene();
-// soft daylight sky (gradient), horizon blends into the ground with fog
 {
   const c = document.createElement('canvas'); c.width = 16; c.height = 512;
   const g = c.getContext('2d'), gr = g.createLinearGradient(0, 0, 0, 512);
-  gr.addColorStop(0.0, '#7fa6c4'); gr.addColorStop(0.32, '#b4cde0'); gr.addColorStop(0.49, '#e9e6df');
-  gr.addColorStop(0.5, '#ddd8cf'); gr.addColorStop(1.0, '#cfc9bf');
+  gr.addColorStop(0.0, '#6f9ac2'); gr.addColorStop(0.3, '#a9c5df'); gr.addColorStop(0.49, '#e4e6e6');
+  gr.addColorStop(0.5, '#c9c6c0'); gr.addColorStop(1.0, '#b9b5ae');
   g.fillStyle = gr; g.fillRect(0, 0, 16, 512);
   const t = new THREE.CanvasTexture(c); t.mapping = THREE.EquirectangularReflectionMapping; t.colorSpace = THREE.SRGBColorSpace;
   scene.background = t;
-  scene.fog = new THREE.Fog('#e3e0d9', 35, 110);
+  scene.fog = new THREE.Fog('#d9dcdf', 60, 170);
 }
 const camera = new THREE.PerspectiveCamera(70, innerWidth / innerHeight, 0.05, 400);
-
 const rig = new THREE.Group();          // player feet
 scene.add(rig);
 rig.add(camera);
 
-/* ------------------------------------------------------------------ ambient occlusion (desktop only, adaptive) */
-let composer = null, gtao = null, aoOn = false;
-const wantAO = !isTouch && params.get('ao') !== '0';
-if (wantAO) {
-  const rt = new THREE.WebGLRenderTarget(innerWidth, innerHeight, { type: THREE.HalfFloatType, samples: 4 });
-  composer = new EffectComposer(renderer, rt);
-  composer.addPass(new RenderPass(scene, camera));
-  gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
-  gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.15, samples: 12, distanceFallOff: 1 });
-  gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, rings: 2, samples: 12 });
-  gtao.blendIntensity = 0.9;
-  composer.addPass(gtao);
-  composer.addPass(new OutputPass());
-  aoOn = true;
-}
-// frame-time watchdog: switch AO off on slow machines
-const perf = { t: 0, n: 0, checked: false };
-function watchPerf(dt) {
-  if (!aoOn || perf.checked || mode !== 'walk') return;
-  perf.t += dt; perf.n++;
-  if (perf.t > 3) {
-    perf.checked = true;
-    if (perf.t / perf.n > 1 / 40) { aoOn = false; console.info('AO deaktiviert (Leistung)'); }
-  }
-}
-
-/* ------------------------------------------------------------------ lights */
-const sun = new THREE.DirectionalLight('#fff3e4', 3.0);
-sun.position.set(-9, 11, 16);
-sun.target.position.set(0, 1.5, 0);
-sun.castShadow = true;
-sun.shadow.mapSize.set(isTouch ? 2048 : 4096, isTouch ? 2048 : 4096);
-const sc = sun.shadow.camera;
-sc.left = -13; sc.right = 13; sc.top = 13; sc.bottom = -13; sc.near = 1; sc.far = 60;
-sun.shadow.bias = -0.0003; sun.shadow.normalBias = 0.025;
-scene.add(sun, sun.target);
-
-const hemi = new THREE.HemisphereLight('#f4f6f8', '#cfc8bd', 0.45);
-scene.add(hemi);
-
-// warm interior pendants (no shadows, cheap)
-const warm = [[-1.2, 2.45, 0.5], [1.4, 2.45, -2.5], [-1.2, 5.6, 1.0], [1.6, 5.6, -2.5], [1.8, 5.4, 3.5]];
-const warmLights = warm.map((p) => {
-  const l = new THREE.PointLight('#ffe9d2', 4.0, 8, 2);
-  l.position.set(...p);
-  scene.add(l);
-  return l;
-});
-
-/* ------------------------------------------------------------------ environment */
-const pmrem = new THREE.PMREMGenerator(renderer);
-new RGBELoader().load('assets/pedestrian_overpass_1k.hdr', (hdr) => {
-  hdr.mapping = THREE.EquirectangularReflectionMapping;
-  const env = pmrem.fromEquirectangular(hdr).texture;
-  scene.environment = env;
-  scene.environmentIntensity = 0.8;
-  scene.environmentRotation.y = Math.PI * 0.35;
-});
-
-/* ------------------------------------------------------------------ materials */
+/* ------------------------------------------------------------------ loading bookkeeping */
+const progressBar = qs('#progressBar'), progressLabel = qs('#progressLabel');
+const manager = new THREE.LoadingManager();
+let loadedFrac = 0;
+manager.onProgress = (url, done, total) => {
+  loadedFrac = Math.max(loadedFrac, done / total);
+  const p = Math.min(99, Math.round(loadedFrac * 100));
+  progressBar.style.width = p + '%';
+  progressLabel.textContent = `Modell wird geladen … ${p} %`;
+};
 const maxAniso = renderer.capabilities.getMaxAnisotropy();
-const tl = new THREE.TextureLoader();
-function tex(url, rx = 1, ry = 1, srgb = false) {
+const tl = new THREE.TextureLoader(manager);
+function tex(url, sx = 1, sy = 1, srgb = true) {
   const t = tl.load(url);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.repeat.set(rx, ry);
+  t.repeat.set(1 / sx, 1 / sy);
   t.anisotropy = Math.min(8, maxAniso);
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-const T = 'assets/tex/';
-const plyCol = tex(T + 'plywood_col.jpg', 1 / 2.1, 1 / 1.04, true);
-const plyNrm = tex(T + 'plywood_nrm.jpg', 1 / 2.1, 1 / 1.04);
-const timCol = tex(T + 'plywood_col.jpg', 1 / 1.3, 1 / 0.65, true);
-const conCol = tex(T + 'concrete_col.jpg', 1 / 2.4, 1 / 2.4, true);
-const conRgh = tex(T + 'concrete_rough.jpg', 1 / 2.4, 1 / 2.4);
-const conNrm = tex(T + 'concrete_nrm.jpg', 1 / 2.4, 1 / 2.4);
-const flCol = tex(T + 'floor_col.jpg', 1 / 4, 1 / 4, true);
-const flRgh = tex(T + 'floor_rough.jpg', 1 / 4, 1 / 4);
-const flNrm = tex(T + 'floor_nrm.jpg', 1 / 4, 1 / 4);
-const noise = tex(T + 'noise.jpg', 1, 1);
 
-const M = {
-  plywood: new THREE.MeshStandardMaterial({ map: plyCol, color: '#ffffff', normalMap: plyNrm, normalScale: new THREE.Vector2(0.18, 0.18), roughness: 0.58 }),
-  green: new THREE.MeshStandardMaterial({ color: '#8aa384', roughness: 0.82 }),
-  timber: new THREE.MeshStandardMaterial({ map: timCol, color: '#e7bf8f', normalMap: plyNrm, normalScale: new THREE.Vector2(0.3, 0.3), roughness: 0.7 }),
-  boards: new THREE.MeshStandardMaterial({ map: timCol, color: '#efcfa6', roughness: 0.75 }),
-  concrete: new THREE.MeshStandardMaterial({ map: conCol, roughnessMap: conRgh, normalMap: conNrm, normalScale: new THREE.Vector2(0.3, 0.3), roughness: 1 }),
-  floor: new THREE.MeshStandardMaterial({ map: flCol, color: '#f3eee7', roughnessMap: flRgh, normalMap: flNrm, normalScale: new THREE.Vector2(0.2, 0.2), roughness: 1, envMapIntensity: 1.3 }),
-  ceiling: new THREE.MeshStandardMaterial({ color: '#f7f4ef', roughness: 0.95 }),
-  plaster: new THREE.MeshStandardMaterial({ color: '#ebe6de', roughness: 0.92, normalMap: conNrm, normalScale: new THREE.Vector2(0.15, 0.15) }),
-  facade: new THREE.MeshStandardMaterial({ color: '#3a3d40', roughness: 0.6, metalness: 0.15, normalMap: conNrm, normalScale: new THREE.Vector2(0.2, 0.2) }),
-  roofmetal: new THREE.MeshStandardMaterial({ color: '#3b4146', roughness: 0.45, metalness: 0.6 }),
-  frame: new THREE.MeshStandardMaterial({ color: '#2b2e31', roughness: 0.38, metalness: 0.55 }),
-  rubber: new THREE.MeshStandardMaterial({ color: '#151617', roughness: 0.9 }),
-  orange: new THREE.MeshStandardMaterial({ color: '#d9532f', roughness: 0.5, metalness: 0.05 }),
-  glass: new THREE.MeshPhysicalMaterial({ color: '#e6f0ee', roughness: 0.03, metalness: 0, transparent: true, opacity: 0.12,
-    envMapIntensity: 1.8, depthWrite: false, side: THREE.DoubleSide }),
-  p_glass: new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.06, transparent: true, opacity: 0.35, envMapIntensity: 1.6, depthWrite: false }),
-  surfboard: new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.06 }),
-  p_matte: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.72, roughnessMap: noise }),
-  p_gloss: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.3 }),
-  p_metal: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.32, metalness: 0.85 }),
-  p_textile: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.96, normalMap: plyNrm, normalScale: new THREE.Vector2(0.05, 0.05) }),
-  p_foliage: new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, side: THREE.DoubleSide }),
-};
-const COLLIDE = new Set(['plywood', 'green', 'concrete', 'floor', 'plaster', 'glass', 'orange', 'facade', 'timber', 'frame']);
-const NO_SHADOW_CAST = new Set(['glass', 'p_glass']);
-
-/* ------------------------------------------------------------------ ground / street */
-{
-  const g = new THREE.CircleGeometry(80, 64);
-  g.rotateX(-Math.PI / 2);
-  const m = new THREE.MeshStandardMaterial({ map: tex(T + 'floor_col.jpg', 1 / 6, 1 / 6, true), color: '#c4c0b8', roughness: 0.9, envMapIntensity: 0.7 });
-  // world-space UVs for the street
-  const uv = g.attributes.uv, pos = g.attributes.position;
-  for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i), pos.getZ(i));
-  const ground = new THREE.Mesh(g, m);
-  ground.position.y = -0.02;
-  ground.receiveShadow = true;
-  ground.name = 'ground';
-  scene.add(ground);
-  var groundMesh = ground;
+/* ------------------------------------------------------------------ baked light: lightmaps + probes */
+const pmrem = new THREE.PMREMGenerator(renderer);
+const PROBES = {};
+function loadProbe(name) {
+  return new Promise((res) => new RGBELoader(manager).load(`assets/light/${name}.hdr`, (hdr) => {
+    hdr.mapping = THREE.EquirectangularReflectionMapping;
+    PROBES[name] = pmrem.fromEquirectangular(hdr).texture; hdr.dispose(); res();
+  }, undefined, () => res()));
 }
+const LMTEX = {};
+let LMINFO = { scale: {} };
 
-/* ------------------------------------------------------------------ load model */
-const colliders = [groundMesh];
-const loader = new GLTFLoader();
-const progressBar = qs('#progressBar'), progressLabel = qs('#progressLabel');
+/* ------------------------------------------------------------------ materials (albedo = same textures as the Blender bake) */
+const T = 'assets/tex/';
+const SPRUCE = [2.1, 1.04];
+const plyCol = () => tex(T + 'spruce_col.jpg', ...SPRUCE);
+const plyNrm = tex(T + 'plywood_nrm.jpg', ...SPRUCE, false);
+const plyRgh = tex(T + 'plywood_rough.jpg', ...SPRUCE, false);
+const linHex = (h) => new THREE.Color(h);    // THREE.Color parses sRGB hex into linear working space
+
+function std(o) { return new THREE.MeshStandardMaterial(o); }
+const BAKED = {
+  plywood: () => std({ map: plyCol(), normalMap: plyNrm, normalScale: new THREE.Vector2(0.25, 0.25), roughnessMap: plyRgh, roughness: 1.0 }),
+  green: () => std({ map: plyCol(), color: linHex('#86b3a6'), normalMap: plyNrm, normalScale: new THREE.Vector2(0.25, 0.25), roughnessMap: plyRgh, roughness: 1.0 }),
+  floor: () => std({ map: tex(T + 'terrazzo_col.jpg', 1.235, 1.235), roughness: 0.32 }),
+  ceiling: () => std({ color: linHex('#efebe4'), roughness: 0.9 }),
+  plaster: () => std({ map: tex(T + 'white_plaster_02_col.jpg', 2, 2), roughness: 0.9 }),
+  concrete: () => std({ map: tex(T + 'concrete_floor_02_col.jpg', 2.5, 2.5), roughness: 0.8 }),
+  facade: () => std({ map: tex(T + 'plastered_wall_04_col.jpg', 2, 2), color: linHex('#5a5e62'), roughness: 0.8 }),
+  orange: () => std({ color: linHex('#d4502c'), roughness: 0.45, metalness: 0.1 }),
+  roofmetal: () => std({ color: linHex('#3a4045'), roughness: 0.4, metalness: 0.6 }),
+  nb_plaster_a: () => std({ map: tex(T + 'yellow_plaster_col.jpg', 2.5, 2.5), roughness: 0.9 }),
+  nb_plaster_b: () => std({ map: tex(T + 'beige_wall_001_col.jpg', 2.5, 2.5), roughness: 0.9 }),
+  nb_plaster_c: () => std({ map: tex(T + 'plastered_wall_04_col.jpg', 2.5, 2.5), color: linHex('#ece6da'), roughness: 0.9 }),
+  nb_stone: () => std({ map: tex(T + 'plastered_wall_04_col.jpg', 2, 2), color: linHex('#b7b0a4'), roughness: 0.85 }),
+  walk: () => std({ map: tex(T + 'granite_tile_03_col.jpg', 2, 2), roughness: 0.8 }),
+  curb: () => std({ color: linHex('#4a4a4a'), roughness: 0.6, metalness: 0.4 }),
+  road: () => std({ map: tex(T + 'granite_tile_col.jpg', 2, 2), roughness: 0.85 }),
+};
+const DYN = {
+  frame: () => std({ color: linHex('#2a2d30'), roughness: 0.35, metalness: 0.6 }),
+  rubber: () => std({ color: linHex('#141516'), roughness: 0.85 }),
+  glass: () => new THREE.MeshPhysicalMaterial({ color: '#eef4f3', roughness: 0.02, transparent: true, opacity: 0.1, envMapIntensity: 1.4, depthWrite: false, side: THREE.DoubleSide }),
+  nb_glass: () => std({ color: linHex('#1c2226'), roughness: 0.05, metalness: 0.2, envMapIntensity: 1.2 }),
+  nb_frame: () => std({ color: linHex('#e6e2da'), roughness: 0.5 }),
+  nb_shopglass: () => std({ color: linHex('#202629'), roughness: 0.03, metalness: 0.1, envMapIntensity: 1.3 }),
+  nb_shopframe: () => std({ color: linHex('#2a2c2e'), roughness: 0.4, metalness: 0.6 }),
+  nb_roof: () => std({ map: tex(T + 'grey_roof_tiles_col.jpg', 3, 3), roughness: 0.8 }),
+  ground_far: () => std({ map: tex(T + 'granite_tile_col.jpg', 2, 2), color: linHex('#9a9a9a'), roughness: 0.9 }),
+  p_glass: () => new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.05, transparent: true, opacity: 0.35, envMapIntensity: 1.4, depthWrite: false }),
+  surfboard: () => new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.28, clearcoat: 1, clearcoatRoughness: 0.05 }),
+  p_matte: () => std({ vertexColors: true, roughness: 0.7 }),
+  p_gloss: () => std({ vertexColors: true, roughness: 0.3 }),
+  p_metal: () => std({ vertexColors: true, roughness: 0.3, metalness: 0.85 }),
+  p_textile: () => std({ vertexColors: true, roughness: 0.95 }),
+  p_foliage: () => std({ vertexColors: true, roughness: 0.6, side: THREE.DoubleSide }),
+};
+const COLLIDE = new Set(['plywood', 'green', 'floor', 'plaster', 'concrete', 'glass', 'orange', 'facade', 'frame', 'walk', 'curb', 'road',
+  'nb_plaster_a', 'nb_plaster_b', 'nb_plaster_c', 'nb_stone', 'nb_glass', 'nb_shopglass', 'ground_far']);
+
+// which probe lights a dynamic object: EG / OG interior or the street
+function probeFor(y, inside) {
+  if (!inside) return PROBES.probe_ext || PROBES.probe_eg;
+  return y > 2.9 ? (PROBES.probe_og || PROBES.probe_eg) : PROBES.probe_eg;
+}
+const SHOP = { minX: -3.55, maxX: 3.55, minZ: -7.2, maxZ: 7.0 };   // shop footprint in scene coordinates
+const inShop = (p) => p.x > SHOP.minX && p.x < SHOP.maxX && p.z > SHOP.minZ && p.z < SHOP.maxZ;
+
+/* ------------------------------------------------------------------ load everything */
+const colliders = [];
+const gltfLoader = new GLTFLoader(manager);
+const loadGLB = (u) => new Promise((res, rej) => gltfLoader.load(u, res, undefined, rej));
+const matCache = new Map();
+function cached(key, make) { if (!matCache.has(key)) matCache.set(key, make()); return matCache.get(key); }
 let model;
-loader.load('assets/surfshop.glb', (gltf) => {
+
+async function loadAll() {
+  LMINFO = await fetch('assets/light/lightmaps.json').then((r) => r.json()).catch(() => ({ scale: {} }));
+  await Promise.all(['probe_eg', 'probe_og', 'probe_ext'].map(loadProbe));
+  for (const g of Object.keys(LMINFO.scale)) {
+    const t = tl.load(`assets/light/${g}.jpg`);
+    t.colorSpace = THREE.SRGBColorSpace; t.channel = 1; t.flipY = false;
+    t.generateMipmaps = true; t.minFilter = THREE.LinearMipmapLinearFilter; t.anisotropy = Math.min(4, maxAniso);
+    LMTEX[g] = t;
+  }
+  const gltf = await loadGLB('assets/surfshop.glb');
   model = gltf.scene;
+  const v = new THREE.Vector3();
+  model.updateMatrixWorld(true);
   model.traverse((o) => {
     if (!o.isMesh) return;
-    const name = o.name.replace(/_\d+$/, '').replace(/\.\d+$/, '');
-    const img = o.userData?.image || o.parent?.userData?.image;
-    if (img) {
-      const t = tl.load('assets/' + img); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Math.min(8, maxAniso);
+    const name = o.name.replace(/\.\d+$/, '');
+    const ex = { ...(o.parent?.userData || {}), ...(o.userData || {}) };
+    const lmg = ex.lightmap;
+    o.geometry.computeBoundingBox();
+    o.geometry.boundingBox.getCenter(v); o.localToWorld(v);
+    let mat;
+    if (ex.image) {
       if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals();
-      o.material = new THREE.MeshStandardMaterial({ map: t, roughness: 0.55, polygonOffset: true, polygonOffsetFactor: -2 });
-      o.receiveShadow = true;
-      return;
+      mat = std({ map: tex('assets/' + ex.image), roughness: 0.6 });
+      mat.map.repeat.set(1, 1);
+      mat.polygonOffset = true; mat.polygonOffsetFactor = -2; mat.polygonOffsetUnits = -2;
+      if (ex.alpha) {
+        mat.map.wrapS = mat.map.wrapT = THREE.ClampToEdgeWrapping;
+        mat.transparent = true; mat.depthWrite = false; mat.alphaTest = 0.03;
+        mat.roughness = ex.glossy ? 0.35 : 0.75;
+        o.renderOrder = 1 + (ex.order || 0);
+      }
+      if (!lmg) { mat.envMap = probeFor(v.y, inShop(v)); mat.envMapIntensity = 1.0; }
+    } else if (lmg && BAKED[name]) {
+      mat = cached(name, BAKED[name]);
+    } else {
+      const inside = inShop(v);
+      const key = name + '|' + (inside ? (v.y > 2.9 ? 'og' : 'eg') : 'ext');
+      mat = cached(key, () => { const m = (DYN[name] || DYN.p_matte)(); m.envMap = probeFor(v.y, inside); return m; });
     }
-    const mat = M[name] || M.p_matte;
+    if (lmg && LMTEX[lmg]) {
+      if (ex.image) mat = mat;   // posters are unique materials
+      mat.lightMap = LMTEX[lmg];
+      mat.lightMapIntensity = Math.PI * (LMINFO.scale[lmg] || 1);
+      // only a little image based light on baked surfaces (for sheen / reflections) – the lightmap carries the light
+      mat.envMap = PROBES.probe_eg; mat.envMapIntensity = name === 'floor' ? 0.35 : 0.12;
+      if (lmg !== 'lm_int') { mat.envMap = PROBES.probe_ext; mat.envMapIntensity = 0.12; }
+    }
     o.material = mat;
-    o.castShadow = !NO_SHADOW_CAST.has(name);
-    o.receiveShadow = true;
     if (name === 'glass' || name === 'p_glass') o.renderOrder = 2;
     if (COLLIDE.has(name)) colliders.push(o);
   });
   scene.add(model);
   model.updateMatrixWorld(true);
-  renderer.shadowMap.needsUpdate = true;
+  await loadAssets();
+}
+
+/* ---- real 3D assets (folded clothes, shirts, caps, ivy, street lamps) as GPU instances */
+const C_B2T = new THREE.Matrix4().set(1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1);   // Blender Z-up -> three Y-up
+const C_T2B = C_B2T.clone().invert();
+const POLO_COLORS = ['#f2efe8', '#1f2b3a', '#d8c7a6', '#d4502c', '#2f6f73', '#202020'];
+async function loadAssets() {
+  let inst = [];
+  try { inst = await fetch('assets/models/instances.json').then((r) => r.json()); } catch (e) { return; }
+  const byAsset = {};
+  for (const it of inst) (byAsset[it.asset] ||= []).push(it);
+  const mb = new THREE.Matrix4(), mt = new THREE.Matrix4(), pos = new THREE.Vector3();
+  await Promise.all(Object.entries(byAsset).map(async ([asset, list]) => {
+    let g;
+    try { g = await loadGLB(`assets/models/ASSET_${asset}.glb`); } catch (e) { console.warn('asset missing', asset); return; }
+    const meshes = [];
+    g.scene.updateMatrixWorld(true);
+    g.scene.traverse((o) => { if (o.isMesh) meshes.push(o); });
+    for (const src of meshes) {
+      let material = src.material;
+      const tinted = asset === 'polo' || asset === 'hoodie';
+      if (tinted) { material = material.clone(); material.map = null; material.color.set('#ffffff'); }
+      // plants: keep the foliage in a deep, dark green
+      if (/plant/.test(asset) && !Array.isArray(material) && /lea(f|ves)/i.test(material.name || '')) {
+        material = material.clone(); material.color.multiply(new THREE.Color(0.36, 0.56, 0.38));
+      }
+      const im = new THREE.InstancedMesh(src.geometry, material, list.length);
+      list.forEach((it, i) => {
+        mb.set(...it.m.flat());
+        mt.multiplyMatrices(C_B2T, mb).multiply(C_T2B).multiply(src.matrixWorld);
+        im.setMatrixAt(i, mt);
+        if (tinted) im.setColorAt(i, new THREE.Color(POLO_COLORS[(i * 7 + (asset === 'hoodie' ? 1 : 3)) % POLO_COLORS.length]));
+      });
+      im.instanceMatrix.needsUpdate = true;
+      im.computeBoundingSphere();
+      // light the asset from the probe of the floor it stands on (first instance decides)
+      mt.multiplyMatrices(C_B2T, mb.set(...list[0].m.flat())).multiply(C_T2B); pos.setFromMatrixPosition(mt);
+      const mats = Array.isArray(material) ? material : [material];
+      for (const m of mats) { m.envMap = probeFor(pos.y, inShop(pos)); m.envMapIntensity = 1.0; }
+      im.frustumCulled = asset !== 'street_lamp_02';
+      scene.add(im);
+    }
+  }));
+}
+
+loadAll().then(() => {
   progressBar.style.width = '100%';
   progressLabel.textContent = 'Bereit.';
   setTimeout(() => { qs('#progress').hidden = true; qs('#introActions').hidden = false; }, 350);
-}, (e) => {
-  const total = e.total || 27_600_000;
-  const p = Math.min(99, Math.round((e.loaded / total) * 100));
-  progressBar.style.width = p + '%';
-  progressLabel.textContent = `Modell wird geladen … ${p} %`;
-}, (err) => {
+}).catch((err) => {
   console.error(err);
   progressLabel.textContent = 'Das Modell konnte nicht geladen werden. Bitte Seite neu laden.';
 });
@@ -326,11 +356,11 @@ function applyView() {
 /* ------------------------------------------------------------------ intro orbit & fly-in */
 let orbitT = 0;
 function orbitCamera(dt) {
-  orbitT += dt * 0.05;
-  const r = 19, a = Math.sin(orbitT) * 0.75 - 0.25;
-  rig.position.set(Math.sin(a) * r, 0, Math.cos(a) * r);
-  camera.position.set(0, 4.2, 0);
-  const v = lookAtYawPitch(new THREE.Vector3(rig.position.x, 4.2, rig.position.z), new THREE.Vector3(1.2, 3.6, 0));
+  orbitT += dt * 0.06;
+  // slow dolly along the shopping street, looking at the shop front
+  rig.position.set(Math.sin(orbitT) * 9 - 2, 0, 15.5);
+  camera.position.set(0, 2.2, 0);
+  const v = lookAtYawPitch(new THREE.Vector3(rig.position.x, 2.2, rig.position.z), new THREE.Vector3(0.4, 4.2, 4));
   yaw = v.yaw; pitch = v.pitch; applyView();
 }
 
@@ -475,8 +505,6 @@ async function startVR() {
     xrSession = null;
     camera.position.set(0, EYE, 0); applyView();
   });
-  warmLights.forEach((l, i) => { l.visible = i === 0 || i === 2; });
-  session.addEventListener('end', () => warmLights.forEach((l) => { l.visible = true; }));
   await renderer.xr.setSession(session);
   if (mode !== 'walk') {
     qs('#intro').classList.add('is-hidden'); qs('#hud').hidden = false;
@@ -607,9 +635,7 @@ function frame(dtOverride) {
   const fl = rig.position.y > 1.6 ? 'OG' : 'EG';
   if (fl !== lastFloor) { floorLabel.textContent = fl; lastFloor = fl; }
   if (dtOverride === undefined || dtOverride === null) {
-    if (aoOn && !renderer.xr.isPresenting && mode !== 'intro') composer.render(dt);
-    else renderer.render(scene, camera);
-    watchPerf(dt);
+    renderer.render(scene, camera);
   }
 }
 if (!TEST) renderer.setAnimationLoop(() => frame());
@@ -617,8 +643,7 @@ if (!TEST) renderer.setAnimationLoop(() => frame());
 addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
-  composer?.setSize(innerWidth, innerHeight);
 });
 
 // expose for debugging / automated checks
-window.__tour = { get aoOn() { return aoOn; }, set aoOn(v) { aoOn = v; }, frame, THREE, scene, camera, rig, renderer, flyTo, STATIONS, colliders, groundAt, get mode() { return mode; }, set mode(v) { mode = v; }, setView(y, p) { yaw = y; pitch = p; applyView(); }, keys };
+window.__tour = { frame, PROBES, LMTEX, THREE, scene, camera, rig, renderer, flyTo, STATIONS, colliders, groundAt, get mode() { return mode; }, set mode(v) { mode = v; }, setView(y, p) { yaw = y; pitch = p; applyView(); }, keys };

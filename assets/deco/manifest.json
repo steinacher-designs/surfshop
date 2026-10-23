@@ -1,0 +1,146 @@
+{
+"p_stussy": {
+"aspect": 0.7502548419979612,
+"alpha": false
+},
+"p_palms": {
+"aspect": 0.64,
+"alpha": false
+},
+"p_board": {
+"aspect": 0.8,
+"alpha": false
+},
+"p_aloha": {
+"aspect": 0.7050209205020921,
+"alpha": false
+},
+"p_surf": {
+"aspect": 0.7502548419979612,
+"alpha": false
+},
+"p_monstera": {
+"aspect": 0.70703125,
+"alpha": false
+},
+"p_chill": {
+"aspect": 0.8,
+"alpha": false
+},
+"p_dreams": {
+"aspect": 1.5013333333333334,
+"alpha": false
+},
+"p_marea": {
+"aspect": 1.8535353535353536,
+"alpha": false
+},
+"p_patagonia": {
+"aspect": 0.6669921875,
+"alpha": false
+},
+"g_yellow": {
+"aspect": 0.7237163814180929,
+"alpha": true
+},
+"g_throwie": {
+"aspect": 1.1282051282051282,
+"alpha": true
+},
+"g_tag1": {
+"aspect": 2.3634146341463413,
+"alpha": true
+},
+"g_tag2": {
+"aspect": 1.4183673469387754,
+"alpha": true
+},
+"s_caution": {
+"aspect": 1.3298701298701299,
+"alpha": true
+},
+"s_00": {
+"aspect": 0.4652777777777778,
+"alpha": true
+},
+"s_01": {
+"aspect": 0.24380165289256198,
+"alpha": true
+},
+"s_02": {
+"aspect": 1.471698113207547,
+"alpha": true
+},
+"s_03": {
+"aspect": 0.8,
+"alpha": true
+},
+"s_04": {
+"aspect": 1.7377049180327868,
+"alpha": true
+},
+"s_05": {
+"aspect": 0.7533333333333333,
+"alpha": true
+},
+"s_06": {
+"aspect": 0.9558823529411765,
+"alpha": true
+},
+"s_07": {
+"aspect": 1.1554404145077721,
+"alpha": true
+},
+"s_08": {
+"aspect": 0.8669950738916257,
+"alpha": true
+},
+"s_09": {
+"aspect": 1.0048076923076923,
+"alpha": true
+},
+"s_10": {
+"aspect": 1.0,
+"alpha": true
+},
+"s_11": {
+"aspect": 1.0,
+"alpha": true
+},
+"s_12": {
+"aspect": 1.0,
+"alpha": true
+},
+"s_13": {
+"aspect": 1.0145631067961165,
+"alpha": true
+},
+"s_14": {
+"aspect": 1.0046728971962617,
+"alpha": true
+},
+"s_15": {
+"aspect": 0.9952153110047847,
+"alpha": true
+},
+"s_16": {
+"aspect": 1.0103626943005182,
+"alpha": true
+},
+"s_bird00": {
+"aspect": 2.3703703703703702,
+"alpha": true
+},
+"s_bird01": {
+"aspect": 2.3850931677018634,
+"alpha": true
+},
+"s_bird02": {
+"aspect": 2.3703703703703702,
+"alpha": true
+},
+"s_bird03": {
+"aspect": 2.3703703703703702,
+"alpha": true
+}
+}
